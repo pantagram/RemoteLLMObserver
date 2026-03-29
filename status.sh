@@ -55,10 +55,11 @@ run_status() {
             total_cr=$(( total_cr + s_cr ))
 
             # Icône selon priorité : attente > travail > inactif
+            # 💬/🔐 uniquement si un process tourne (proc_count > 0)
             local icon
-            if [[ "$s_state" == "waiting_approval" && $mod_epoch -ge $cutoff_waiting ]]; then
+            if [[ "$s_state" == "waiting_approval" && $mod_epoch -ge $cutoff_waiting && $proc_count -gt 0 ]]; then
                 icon="🔐"; (( waiting_a++ ))
-            elif [[ "$s_state" == "waiting_response" && $mod_epoch -ge $cutoff_waiting ]]; then
+            elif [[ "$s_state" == "waiting_response" && $mod_epoch -ge $cutoff_waiting && $proc_count -gt 0 ]]; then
                 icon="💬"; (( waiting_r++ ))
             elif (( mod_epoch >= cutoff_active )); then
                 icon="⚡"; (( active_count++ ))

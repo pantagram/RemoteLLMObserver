@@ -165,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let status: String
                 if session.isRecentlyActive {
                     status = "⚡"
-                } else if session.needsAttention {
+                } else if session.needsAttention && processMonitor.count > 0 {
                     status = session.waitingState.icon   // 💬 or 🔐
                 } else {
                     status = "⏸"
