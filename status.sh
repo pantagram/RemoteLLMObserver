@@ -2,42 +2,33 @@
 # Claude CLI Observer — status en ligne de commande
 # Usage: ./status.sh [--watch]
 
-CLAUDE_DIR="$HOME/.claude/projects"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_lib.sh
+source "$SCRIPT_DIR/_lib.sh"
+
 WATCH_MODE=false
 [[ "$1" == "--watch" ]] && WATCH_MODE=true
-
-format_tokens() {
-    local n=$1
-    if   (( n >= 1000000 )); then printf "%.2fM tok" "$(echo "scale=2; $n/1000000" | bc)"
-    elif (( n >= 1000 ));    then printf "%.1fK tok" "$(echo "scale=1; $n/1000" | bc)"
-    else                          printf "%d tok" "$n"
-    fi
-}
 
 run_status() {
     local now
     now=$(date +%s)
     local cutoff_24h=$(( now - 86400 ))
-    local cutoff_active=$(( now - 10 ))
+    local cutoff_active=$(( now - 30 ))     # cohérent avec l'app (30s)
+    local cutoff_waiting=$(( now - 600 ))   # affiche 💬/🔐 si modifié dans les 10 min
 
     # ── Processus ─────────────────────────────────────────────────────────
     local proc_count
-    proc_count=$(ps -eo comm | grep -cE "^claude$|/claude$" || true)
+    proc_count=$(count_processes)
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo " Claude CLI Observer"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    if (( proc_count == 0 )); then
-        echo " Processes  : none"
-    else
-        echo " Processes  : $proc_count running"
-    fi
-
-    # ── Sessions (dernières 24h) ──────────────────────────────────────────
-    local total_in=0 total_out=0 total_cache_c=0 total_cache_r=0
+    # ── Sessions (dernières 24h) ───────────────────────────────────────────
+    local total_in=0 total_out=0 total_cc=0 total_cr=0
     local session_lines=()
+    local active_count=0 waiting_r=0 waiting_a=0
 
     for project_dir in "$CLAUDE_DIR"/*/; do
         [[ -d "$project_dir" ]] || continue
@@ -47,94 +38,65 @@ run_status() {
         for jsonl in "$project_dir"*.jsonl; do
             [[ -f "$jsonl" ]] || continue
 
-            # Check age
             local mod_epoch
             mod_epoch=$(stat -f %m "$jsonl" 2>/dev/null || echo 0)
             (( mod_epoch < cutoff_24h )) && continue
 
-            local active_flag=""
-            (( mod_epoch >= cutoff_active )) && active_flag="⚡"
-
-            # Count tokens with python3 (always available on macOS)
-            read -r s_in s_out s_cc s_cr < <(python3 - "$jsonl" <<'EOF'
-import json, sys
-tin=tout=tcc=tcr=0
-for line in open(sys.argv[1]):
-    try:
-        obj=json.loads(line)
-    except:
-        continue
-    usage=None
-    if obj.get("type")=="assistant":
-        usage=obj.get("message",{}).get("usage")
-    elif obj.get("type")=="progress":
-        usage=obj.get("data",{}).get("message",{}).get("usage")
-    if usage:
-        tin  += usage.get("input_tokens",0)
-        tout += usage.get("output_tokens",0)
-        tcc  += usage.get("cache_creation_input_tokens",0)
-        tcr  += usage.get("cache_read_input_tokens",0)
-print(tin, tout, tcc, tcr)
-EOF
-)
-            total_in=$(( total_in + s_in ))
-            total_out=$(( total_out + s_out ))
-            total_cache_c=$(( total_cache_c + s_cc ))
-            total_cache_r=$(( total_cache_r + s_cr ))
+            # Tokens + wait state en un seul appel Python
+            local s_in s_out s_cc s_cr s_state
+            read -r s_in s_out s_cc s_cr s_state < <(parse_jsonl "$jsonl")
 
             local s_total=$(( s_in + s_out + s_cc + s_cr ))
             (( s_total == 0 )) && continue
 
-            local session_id
-            session_id=$(basename "$jsonl" .jsonl)
-            local short_id="${session_id:0:8}"
-            local tok_str
-            tok_str=$(format_tokens "$s_total")
+            total_in=$(( total_in + s_in ))
+            total_out=$(( total_out + s_out ))
+            total_cc=$(( total_cc + s_cc ))
+            total_cr=$(( total_cr + s_cr ))
 
-            local ts
+            # Icône selon priorité : attente > travail > inactif
+            local icon
+            if [[ "$s_state" == "waiting_approval" && $mod_epoch -ge $cutoff_waiting ]]; then
+                icon="🔐"; (( waiting_a++ ))
+            elif [[ "$s_state" == "waiting_response" && $mod_epoch -ge $cutoff_waiting ]]; then
+                icon="💬"; (( waiting_r++ ))
+            elif (( mod_epoch >= cutoff_active )); then
+                icon="⚡"; (( active_count++ ))
+            else
+                icon="⏸"
+            fi
+
+            local session_id short_id tok_str ts
+            session_id=$(basename "$jsonl" .jsonl)
+            short_id="${session_id:0:8}"
+            tok_str=$(format_tokens "$s_total")
             ts=$(date -r "$mod_epoch" "+%H:%M:%S")
 
-            session_lines+=(" ${active_flag:-⏸} $project_name  [$short_id]  $tok_str  (last: $ts)")
+            session_lines+=(" $icon $project_name  [$short_id]  $tok_str  (last: $ts)")
 
             # Subagents
             local subagent_dir="$project_dir${session_id}/subagents"
             if [[ -d "$subagent_dir" ]]; then
                 for agent_dir in "$subagent_dir"/agent-*/; do
                     [[ -d "$agent_dir" ]] || continue
-                    local agent_name
+                    local agent_name agent_jsonl
                     agent_name=$(basename "$agent_dir")
-                    local agent_jsonl="$agent_dir${agent_name}.jsonl"
+                    agent_jsonl="$agent_dir${agent_name}.jsonl"
                     [[ -f "$agent_jsonl" ]] || continue
 
-                    read -r a_in a_out a_cc a_cr < <(python3 - "$agent_jsonl" <<'EOF'
-import json, sys
-tin=tout=tcc=tcr=0
-for line in open(sys.argv[1]):
-    try:
-        obj=json.loads(line)
-    except:
-        continue
-    usage=None
-    if obj.get("type")=="assistant":
-        usage=obj.get("message",{}).get("usage")
-    if usage:
-        tin  += usage.get("input_tokens",0)
-        tout += usage.get("output_tokens",0)
-        tcc  += usage.get("cache_creation_input_tokens",0)
-        tcr  += usage.get("cache_read_input_tokens",0)
-print(tin, tout, tcc, tcr)
-EOF
-)
+                    local a_in a_out a_cc a_cr a_state
+                    read -r a_in a_out a_cc a_cr a_state < <(parse_jsonl "$agent_jsonl")
                     local a_total=$(( a_in + a_out + a_cc + a_cr ))
                     (( a_total == 0 )) && continue
+
                     total_in=$(( total_in + a_in ))
                     total_out=$(( total_out + a_out ))
-                    total_cache_c=$(( total_cache_c + a_cc ))
-                    total_cache_r=$(( total_cache_r + a_cr ))
+                    total_cc=$(( total_cc + a_cc ))
+                    total_cr=$(( total_cr + a_cr ))
 
-                    local agent_short="${agent_name/agent-/}"
+                    local agent_short a_tok
+                    agent_short="${agent_name/agent-/}"
                     agent_short="${agent_short:0:8}"
-                    local a_tok
                     a_tok=$(format_tokens "$a_total")
                     session_lines+=("    ↳ agent $agent_short  $a_tok")
                 done
@@ -142,10 +104,25 @@ EOF
         done
     done
 
+    # ── En-tête processus ─────────────────────────────────────────────────
+    if (( proc_count == 0 )); then
+        echo " Processes  : none"
+    else
+        local proc_label=" Processes  : $proc_count running"
+        local waiting_parts=()
+        (( waiting_a > 0 )) && waiting_parts+=("🔐 $waiting_a approval")
+        (( waiting_r > 0 )) && waiting_parts+=("💬 $waiting_r reply")
+        (( active_count > 0 )) && waiting_parts+=("⚡ $active_count working")
+        if (( ${#waiting_parts[@]} > 0 )); then
+            proc_label+="  ($(IFS='  ·  '; echo "${waiting_parts[*]}"))"
+        fi
+        echo "$proc_label"
+    fi
+
     # ── Totaux ────────────────────────────────────────────────────────────
-    local grand_total=$(( total_in + total_out + total_cache_c + total_cache_r ))
+    local grand_total=$(( total_in + total_out + total_cc + total_cr ))
     echo " Total      : $(format_tokens "$grand_total")"
-    echo "   ↳ in $(format_tokens $(( total_in + total_cache_c + total_cache_r )))  out $(format_tokens "$total_out")"
+    echo "   ↳ in $(format_tokens $(( total_in + total_cc + total_cr )))  out $(format_tokens "$total_out")"
 
     # ── Liste sessions ────────────────────────────────────────────────────
     if (( ${#session_lines[@]} > 0 )); then
