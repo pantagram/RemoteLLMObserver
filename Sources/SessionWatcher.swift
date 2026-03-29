@@ -69,6 +69,9 @@ final class SessionWatcher {
                     let tokens = parser.parseFull(fileURL: file)
                     upsertSession(sessionId: sessionId, projectName: projectName,
                                   addTokens: tokens, agentId: nil, date: modDate)
+                    if let entry = TokenParser.readLastEntry(fileURL: file) {
+                        sessions[sessionId]?.waitingState = Self.waitingState(from: entry)
+                    }
 
                 } else if isDir {
                     // Subagent files under {sessionId}/subagents/agent-{id}/agent-{id}.jsonl
@@ -167,16 +170,15 @@ final class SessionWatcher {
                 upsertSession(sessionId: sessionId, projectName: projectName,
                               addTokens: delta, agentId: nil, date: now, markLive: true)
             } else {
-                // File touched but no new tokens — still mark live
                 if sessions[sessionId] != nil {
                     sessions[sessionId]?.lastActivity = now
                     sessions[sessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
                 }
             }
+            updateWaitingState(sessionId: sessionId, fileURL: url)
             onUpdate?(Array(sessions.values))
 
         } else if parts.count >= 5, parts[2] == "subagents" {
-            // Subagent file: parts = [projectDir, sessionId, "subagents", "agent-{id}", "agent-{id}.jsonl"]
             let parentSessionId = parts[1]
             let agentDirName = parts[3]
             let agentId = String(agentDirName.dropFirst("agent-".count))
@@ -188,6 +190,7 @@ final class SessionWatcher {
                 sessions[parentSessionId]?.lastActivity = now
                 sessions[parentSessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
             }
+            updateWaitingState(sessionId: parentSessionId, fileURL: url)
             onUpdate?(Array(sessions.values))
         }
     }
@@ -218,6 +221,34 @@ final class SessionWatcher {
         if markLive {
             sessions[sessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
         }
+    }
+
+    // MARK: - Waiting state detection
+
+    private func updateWaitingState(sessionId: String, fileURL: URL) {
+        guard let entry = TokenParser.readLastEntry(fileURL: fileURL) else { return }
+        let state = Self.waitingState(from: entry)
+
+        sessions[sessionId]?.waitingState = state
+
+        // If last entry is a user message, Claude is processing → keep ⚡, clear waiting
+        if state == .none {
+            sessions[sessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
+        } else {
+            // Assistant just responded → clear ⚡ immediately, show waiting colour instead
+            sessions[sessionId]?.liveActiveUntil = .distantPast
+        }
+    }
+
+    private static func waitingState(from entry: [String: Any]) -> WaitingState {
+        guard entry["type"] as? String == "assistant" else { return .none }
+
+        if let message = entry["message"] as? [String: Any],
+           let content = message["content"] as? [[String: Any]],
+           content.contains(where: { $0["type"] as? String == "tool_use" }) {
+            return .waitingForApproval
+        }
+        return .waitingForResponse
     }
 
     private func pruneStale() {

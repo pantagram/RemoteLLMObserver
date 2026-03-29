@@ -46,6 +46,27 @@ final class TokenParser {
         fileOffsets[fileURL.path] = nil
     }
 
+    /// Reads the last complete JSON entry from a JSONL file without touching the offset.
+    static func readLastEntry(fileURL: URL) -> [String: Any]? {
+        guard let fh = try? FileHandle(forReadingFrom: fileURL) else { return nil }
+        defer { try? fh.close() }
+
+        let size = (try? fh.seekToEnd()) ?? 0
+        guard size > 0 else { return nil }
+
+        // Read up to the last 8 KB — enough for any single JSONL entry
+        let chunk = min(size, 8192)
+        try? fh.seek(toOffset: size - chunk)
+        let data = fh.readDataToEndOfFile()
+
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        guard let lastLine = text.components(separatedBy: "\n").last(where: { !$0.isEmpty }),
+              let lineData = lastLine.data(using: .utf8)
+        else { return nil }
+
+        return try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
+    }
+
     // MARK: - Private
 
     private func parseLines(_ content: String) -> TokenCount {

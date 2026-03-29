@@ -39,6 +39,22 @@ struct TokenCount {
     }
 }
 
+// MARK: - Waiting state
+
+enum WaitingState: Equatable {
+    case none
+    case waitingForResponse   // last entry = assistant (text)
+    case waitingForApproval   // last entry = assistant (tool_use pending)
+
+    var icon: String {
+        switch self {
+        case .none:                return "⏸"
+        case .waitingForResponse:  return "💬"
+        case .waitingForApproval:  return "🔐"
+        }
+    }
+}
+
 // MARK: - Session
 
 struct SessionInfo {
@@ -52,10 +68,14 @@ struct SessionInfo {
     /// Expires 30 seconds after the last real-time write.
     var liveActiveUntil: Date = .distantPast
 
+    /// Detected from the last JSONL entry — set when process is alive.
+    var waitingState: WaitingState = .none
+
     /// True only when FSEvents detected a write within the last 30 seconds.
-    var isRecentlyActive: Bool {
-        Date() < liveActiveUntil
-    }
+    var isRecentlyActive: Bool { Date() < liveActiveUntil }
+
+    /// True when the session needs user attention (response or approval).
+    var needsAttention: Bool { waitingState != .none }
 
     var totalUsage: TokenCount {
         agents.values.reduce(usage) { $0 + $1 }

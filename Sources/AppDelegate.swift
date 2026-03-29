@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let sessionWatcher = SessionWatcher()
     private var sessions: [SessionInfo] = []
     private var refreshTimer: Timer?
+    private var isImageColored = false   // tracks current icon tint to avoid redundant updates
 
     // MARK: - Launch
 
@@ -37,15 +38,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateButton() {
         guard let button = statusItem.button else { return }
 
-        let activeCount  = sessions.filter { $0.isRecentlyActive }.count
-        let processCount = processMonitor.count
+        let processCount    = processMonitor.count
+        let waitingCount    = processCount > 0 ? sessions.filter { $0.needsAttention }.count : 0
+        let activeCount     = sessions.filter { $0.isRecentlyActive }.count
 
-        if processCount == 0 {
-            button.title = ""
+        // Priority: waiting > working > open
+        if waitingCount > 0 {
+            setIconColor(orange: true)
+            button.title = " ?\(waitingCount)"
         } else if activeCount > 0 {
+            setIconColor(orange: false)
             button.title = " ⚡\(activeCount)"
-        } else {
+        } else if processCount > 0 {
+            setIconColor(orange: false)
             button.title = " \(processCount)"
+        } else {
+            setIconColor(orange: false)
+            button.title = ""
+        }
+    }
+
+    /// Only rebuilds the NSImage when the colour state actually changes.
+    private func setIconColor(orange: Bool) {
+        guard orange != isImageColored else { return }
+        isImageColored = orange
+        guard let button = statusItem.button else { return }
+
+        if orange {
+            let cfg = NSImage.SymbolConfiguration(paletteColors: [.systemOrange])
+            button.image = NSImage(systemSymbolName: "terminal",
+                                   accessibilityDescription: "Claude")?
+                .withSymbolConfiguration(cfg)
+        } else {
+            let img = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Claude")
+            img?.isTemplate = true
+            button.image = img
         }
     }
 
@@ -90,6 +117,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let recentSessions = sessions
             .filter { $0.lastActivity > Date().addingTimeInterval(-86_400) }
             .sorted { a, b in
+                // 1. waiting for attention  2. actively working  3. rest by date
+                if a.needsAttention != b.needsAttention { return a.needsAttention }
                 if a.isRecentlyActive != b.isRecentlyActive { return a.isRecentlyActive }
                 return a.lastActivity > b.lastActivity
             }
@@ -133,7 +162,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(NSMenuItem.separator())
 
             for session in recentSessions.prefix(15) {
-                let status = session.isRecentlyActive ? "⚡" : "⏸"
+                let status: String
+                if session.isRecentlyActive {
+                    status = "⚡"
+                } else if session.needsAttention {
+                    status = session.waitingState.icon   // 💬 or 🔐
+                } else {
+                    status = "⏸"
+                }
                 let sessionTotal = session.totalUsage
 
                 let sessionItem = NSMenuItem(
