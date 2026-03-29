@@ -219,7 +219,8 @@ final class SessionWatcher {
 
         // Only FSEvents (live) writes should light up the status badge.
         if markLive {
-            sessions[sessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
+            sessions[sessionId]?.liveActiveUntil    = Date().addingTimeInterval(30)
+            sessions[sessionId]?.lastFSEventWrite   = Date()
         }
     }
 

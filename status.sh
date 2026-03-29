@@ -14,7 +14,7 @@ run_status() {
     now=$(date +%s)
     local cutoff_24h=$(( now - 86400 ))
     local cutoff_active=$(( now - 30 ))     # cohérent avec l'app (30s)
-    local cutoff_waiting=$(( now - 600 ))   # affiche 💬/🔐 si modifié dans les 10 min
+    local cutoff_waiting=$(( now - 300 ))   # affiche 💬/🔐 si modifié dans les 5 min
 
     # ── Processus ─────────────────────────────────────────────────────────
     local proc_count
