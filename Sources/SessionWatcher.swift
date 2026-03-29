@@ -170,7 +170,7 @@ final class SessionWatcher {
                 // File touched but no new tokens — still mark live
                 if sessions[sessionId] != nil {
                     sessions[sessionId]?.lastActivity = now
-                    sessions[sessionId]?.liveActiveUntil = Date().addingTimeInterval(10)
+                    sessions[sessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
                 }
             }
             onUpdate?(Array(sessions.values))
@@ -186,7 +186,7 @@ final class SessionWatcher {
                               addTokens: delta, agentId: agentId, date: now, markLive: true)
             } else if sessions[parentSessionId] != nil {
                 sessions[parentSessionId]?.lastActivity = now
-                sessions[parentSessionId]?.liveActiveUntil = Date().addingTimeInterval(10)
+                sessions[parentSessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
             }
             onUpdate?(Array(sessions.values))
         }
@@ -216,7 +216,7 @@ final class SessionWatcher {
 
         // Only FSEvents (live) writes should light up the status badge.
         if markLive {
-            sessions[sessionId]?.liveActiveUntil = Date().addingTimeInterval(10)
+            sessions[sessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
         }
     }
 

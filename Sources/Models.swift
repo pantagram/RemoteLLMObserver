@@ -49,10 +49,10 @@ struct SessionInfo {
     var lastActivity: Date
 
     /// Set only by live FSEvents writes (never by initial file-load).
-    /// Expires 10 seconds after the last real-time write.
+    /// Expires 30 seconds after the last real-time write.
     var liveActiveUntil: Date = .distantPast
 
-    /// True only when FSEvents detected a write within the last 10 seconds.
+    /// True only when FSEvents detected a write within the last 30 seconds.
     var isRecentlyActive: Bool {
         Date() < liveActiveUntil
     }
