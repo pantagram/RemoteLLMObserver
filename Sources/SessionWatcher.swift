@@ -170,11 +170,14 @@ final class SessionWatcher {
                 upsertSession(sessionId: sessionId, projectName: projectName,
                               addTokens: delta, agentId: nil, date: now, markLive: true)
             } else {
+                // File touched but no new complete lines — still mark live
                 if sessions[sessionId] != nil {
-                    sessions[sessionId]?.lastActivity = now
-                    sessions[sessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
+                    sessions[sessionId]?.lastActivity     = now
+                    sessions[sessionId]?.liveActiveUntil  = Date().addingTimeInterval(30)
+                    sessions[sessionId]?.lastFSEventWrite = now   // fix: needed for needsAttention
                 }
             }
+            // Only the session's own file determines waiting state
             updateWaitingState(sessionId: sessionId, fileURL: url)
             onUpdate?(Array(sessions.values))
 
@@ -187,10 +190,12 @@ final class SessionWatcher {
                 upsertSession(sessionId: parentSessionId, projectName: projectName,
                               addTokens: delta, agentId: agentId, date: now, markLive: true)
             } else if sessions[parentSessionId] != nil {
-                sessions[parentSessionId]?.lastActivity = now
-                sessions[parentSessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
+                sessions[parentSessionId]?.lastActivity     = now
+                sessions[parentSessionId]?.liveActiveUntil  = Date().addingTimeInterval(30)
+                sessions[parentSessionId]?.lastFSEventWrite = now   // fix: needed for needsAttention
             }
-            updateWaitingState(sessionId: parentSessionId, fileURL: url)
+            // Don't update waitingState from subagent files — only the parent session file
+            // determines whether the user is actually needed.
             onUpdate?(Array(sessions.values))
         }
     }
@@ -232,12 +237,13 @@ final class SessionWatcher {
 
         sessions[sessionId]?.waitingState = state
 
-        // If last entry is a user message, Claude is processing → keep ⚡, clear waiting
+        // Only extend liveActiveUntil on user messages (Claude is actively processing).
+        // On assistant messages, let liveActiveUntil expire naturally (30 s) to avoid
+        // the ⚡ flickering on rapid tool-call cycles where auto-approved tool results
+        // arrive just after the assistant entry. The badge priority logic (waiting > working)
+        // ensures orange is shown even while liveActiveUntil hasn't expired yet.
         if state == .none {
             sessions[sessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
-        } else {
-            // Assistant just responded → clear ⚡ immediately, show waiting colour instead
-            sessions[sessionId]?.liveActiveUntil = .distantPast
         }
     }
 
