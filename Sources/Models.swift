@@ -73,17 +73,13 @@ struct SessionInfo {
     /// True when FSEvents detected a write in the last 30 seconds.
     var isRecentlyActive: Bool { Date() < liveActiveUntil }
 
-    /// True when the session needs user attention:
-    /// - waitingForApproval (🔐): immediately — blocks progress
-    /// - waitingForResponse (💬): only after 5 minutes — avoids false positives on active conversations
+    /// True only when an agent is blocked waiting for explicit approval (🔐).
+    /// waitingForResponse is intentionally excluded — it fires after every reply
+    /// and has no actionable urgency.
     var needsAttention: Bool {
         guard !isRecentlyActive else { return false }
-        let age = Date().timeIntervalSince(lastActivity)
-        switch waitingState {
-        case .none:                return false
-        case .waitingForApproval:  return age < 3_600
-        case .waitingForResponse:  return age > 300 && age < 3_600
-        }
+        guard waitingState == .waitingForApproval else { return false }
+        return Date().timeIntervalSince(lastActivity) < 3_600
     }
 
     var totalUsage: TokenCount {
