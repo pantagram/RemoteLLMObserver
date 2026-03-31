@@ -43,19 +43,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let activeCount     = sessions.filter { $0.isRecentlyActive }.count
 
         // Priority: waiting > working > open
+        let title: String
         if waitingCount > 0 {
             setIconColor(orange: true)
-            button.title = " ?\(waitingCount)"
+            title = " ?\(waitingCount)"
         } else if activeCount > 0 {
             setIconColor(orange: false)
-            button.title = " ⚡\(activeCount)"
+            title = " ⚡\(activeCount)"
         } else if processCount > 0 {
             setIconColor(orange: false)
-            button.title = " \(processCount)"
+            title = " \(processCount)"
         } else {
             setIconColor(orange: false)
-            button.title = ""
+            title = ""
         }
+
+        // Always sync title and imagePosition together — AppKit resets
+        // imagePosition to .imageOnly when title is set to "" and doesn't
+        // restore it automatically when a title is set again later.
+        button.title = title
+        button.imagePosition = title.isEmpty ? .imageOnly : .imageLeft
     }
 
     /// Only rebuilds the NSImage when the colour state actually changes.
