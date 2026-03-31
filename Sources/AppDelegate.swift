@@ -39,9 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateButton() {
         guard let button = statusItem.button else { return }
 
-        let processCount    = processMonitor.count
-        let waitingCount    = processCount > 0 ? sessions.filter { $0.needsAttention }.count : 0
-        let activeCount     = sessions.filter { $0.isRecentlyActive }.count
+        let processCount   = processMonitor.count
+        let waitingCount   = sessions.filter { $0.needsAttention }.count
+        let activeCount    = sessions.filter { $0.isRecentlyActive }.count
+        let sessionCount   = max(processCount, waitingCount + activeCount)
 
         // Priority: waiting > working > open
         let title: String
@@ -51,9 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else if activeCount > 0 {
             setIconColor(orange: false)
             title = " ⚡\(activeCount)"
-        } else if processCount > 0 {
+        } else if sessionCount > 0 {
             setIconColor(orange: false)
-            title = " \(processCount)"
+            title = " \(sessionCount)"
         } else {
             setIconColor(orange: false)
             title = ""
@@ -134,21 +135,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // ── Global total ──────────────────────────────────────────────────
         let processCount    = processMonitor.count
         let activeCount     = sessions.filter { $0.isRecentlyActive }.count
-        let attentionCount  = processCount > 0 ? sessions.filter { $0.needsAttention }.count : 0
-        let idleCount       = max(0, processCount - activeCount - attentionCount)
+        let attentionCount  = sessions.filter { $0.needsAttention }.count
+        let knownCount      = activeCount + attentionCount
+        let idleCount       = max(0, processCount - knownCount)
 
         menu.addItem(header("Claude CLI Observer"))
         menu.addItem(NSMenuItem.separator())
 
         let procLabel: String
-        if processCount == 0 {
+        if knownCount == 0 && processCount == 0 {
             procLabel = "No active process"
         } else {
             var parts: [String] = []
             if attentionCount > 0 { parts.append("🟠 \(attentionCount) waiting") }
             if activeCount > 0    { parts.append("⚡ \(activeCount) working") }
             if idleCount > 0      { parts.append("⏸ \(idleCount) idle") }
-            // Fallback : processus détectés mais aucune session récente dans le JSONL
             procLabel = parts.isEmpty ? "⏸ \(processCount) open" : parts.joined(separator: "  ·  ")
         }
         let procItem = NSMenuItem(title: procLabel, action: nil, keyEquivalent: "")
@@ -212,7 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if debugMode {
             let lines = [
-                "processes: \(processCount)",
+                "processes (ps): \(processCount)",
                 "sessions total: \(sessions.count)",
                 "active (⚡): \(activeCount)",
                 "attention (🟠): \(attentionCount)",
