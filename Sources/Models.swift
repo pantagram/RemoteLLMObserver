@@ -73,12 +73,17 @@ struct SessionInfo {
     /// True when FSEvents detected a write in the last 30 seconds.
     var isRecentlyActive: Bool { Date() < liveActiveUntil }
 
-    /// True when the session is waiting for user input, was active in the last hour,
-    /// and is NOT currently processing (active sessions take priority over waiting state).
+    /// True when the session needs user attention:
+    /// - waitingForApproval (🔐): immediately — blocks progress
+    /// - waitingForResponse (💬): only after 5 minutes — avoids false positives on active conversations
     var needsAttention: Bool {
-        guard waitingState != .none else { return false }
         guard !isRecentlyActive else { return false }
-        return Date().timeIntervalSince(lastActivity) < 3_600
+        let age = Date().timeIntervalSince(lastActivity)
+        switch waitingState {
+        case .none:                return false
+        case .waitingForApproval:  return age < 3_600
+        case .waitingForResponse:  return age > 300 && age < 3_600
+        }
     }
 
     var totalUsage: TokenCount {
