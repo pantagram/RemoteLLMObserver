@@ -7,7 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let sessionWatcher = SessionWatcher()
     private var sessions: [SessionInfo] = []
     private var refreshTimer: Timer?
-    private var isImageColored = false   // tracks current icon tint to avoid redundant updates
+    private var isImageColored = false
+    private var debugMode = false
 
     // MARK: - Launch
 
@@ -203,9 +204,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
+        // ── Debug ─────────────────────────────────────────────────────────
+        menu.addItem(NSMenuItem.separator())
+        let debugTitle = debugMode ? "Hide Debug Info" : "Show Debug Info"
+        let debugToggle = NSMenuItem(title: debugTitle, action: #selector(toggleDebug), keyEquivalent: "d")
+        menu.addItem(debugToggle)
+
+        if debugMode {
+            let lines = [
+                "processes: \(processCount)",
+                "sessions total: \(sessions.count)",
+                "active (⚡): \(activeCount)",
+                "attention (🟠): \(attentionCount)",
+            ] + sessions.map { s in
+                "  [\(s.sessionId.prefix(8))] \(s.projectName) | active=\(s.isRecentlyActive) | attn=\(s.needsAttention) | waiting=\(s.waitingState) | lastAct=\(Int(-s.lastActivity.timeIntervalSinceNow))s ago"
+            }
+            for line in lines {
+                let item = NSMenuItem(title: line, action: nil, keyEquivalent: "")
+                item.isEnabled = false
+                menu.addItem(item)
+            }
+        }
+
         // ── Footer ────────────────────────────────────────────────────────
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+    }
+
+    @objc private func toggleDebug() {
+        debugMode.toggle()
+        rebuildMenu()
     }
 
     // MARK: - Formatting helpers

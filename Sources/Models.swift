@@ -64,24 +64,20 @@ struct SessionInfo {
     var agents: [String: TokenCount]   // agentId -> tokens
     var lastActivity: Date
 
-    /// Set only by live FSEvents writes (never by initial file-load).
-    /// Expires 30 seconds after the last real-time write.
+    /// Expires 30 seconds after the last real-time FSEvents write.
     var liveActiveUntil: Date = .distantPast
 
-    /// Timestamp of the last live FSEvents write (independent of liveActiveUntil).
-    var lastFSEventWrite: Date = .distantPast
-
-    /// Detected from the last JSONL entry — set when process is alive.
+    /// Detected from the last JSONL entry.
     var waitingState: WaitingState = .none
 
-    /// True only when FSEvents detected a write within the last 30 seconds.
+    /// True when FSEvents detected a write in the last 30 seconds.
     var isRecentlyActive: Bool { Date() < liveActiveUntil }
 
-    /// True when the session needs attention AND had a recent write (< 5 min).
-    /// Guards against stale waiting state from finished sessions.
+    /// True when the session is waiting for user input and was active in the last hour.
+    /// Uses lastActivity (set by both initial load and FSEvents) — not a FSEvents-only gate.
     var needsAttention: Bool {
         guard waitingState != .none else { return false }
-        return Date().timeIntervalSince(lastFSEventWrite) < 300
+        return Date().timeIntervalSince(lastActivity) < 3_600
     }
 
     var totalUsage: TokenCount {

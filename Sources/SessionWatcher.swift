@@ -169,13 +169,9 @@ final class SessionWatcher {
             if let delta = parser.parseIncremental(fileURL: url) {
                 upsertSession(sessionId: sessionId, projectName: projectName,
                               addTokens: delta, agentId: nil, date: now, markLive: true)
-            } else {
-                // File touched but no new complete lines — still mark live
-                if sessions[sessionId] != nil {
-                    sessions[sessionId]?.lastActivity     = now
-                    sessions[sessionId]?.liveActiveUntil  = Date().addingTimeInterval(30)
-                    sessions[sessionId]?.lastFSEventWrite = now   // fix: needed for needsAttention
-                }
+            } else if sessions[sessionId] != nil {
+                sessions[sessionId]?.lastActivity    = now
+                sessions[sessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
             }
             // Only the session's own file determines waiting state
             updateWaitingState(sessionId: sessionId, fileURL: url)
@@ -190,9 +186,8 @@ final class SessionWatcher {
                 upsertSession(sessionId: parentSessionId, projectName: projectName,
                               addTokens: delta, agentId: agentId, date: now, markLive: true)
             } else if sessions[parentSessionId] != nil {
-                sessions[parentSessionId]?.lastActivity     = now
-                sessions[parentSessionId]?.liveActiveUntil  = Date().addingTimeInterval(30)
-                sessions[parentSessionId]?.lastFSEventWrite = now   // fix: needed for needsAttention
+                sessions[parentSessionId]?.lastActivity    = now
+                sessions[parentSessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
             }
             // Don't update waitingState from subagent files — only the parent session file
             // determines whether the user is actually needed.
@@ -222,10 +217,8 @@ final class SessionWatcher {
             sessions[sessionId]?.lastActivity = date
         }
 
-        // Only FSEvents (live) writes should light up the status badge.
         if markLive {
-            sessions[sessionId]?.liveActiveUntil    = Date().addingTimeInterval(30)
-            sessions[sessionId]?.lastFSEventWrite   = Date()
+            sessions[sessionId]?.liveActiveUntil = Date().addingTimeInterval(30)
         }
     }
 
