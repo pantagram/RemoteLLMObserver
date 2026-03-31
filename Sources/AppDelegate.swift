@@ -131,9 +131,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
 
         // ── Global total ──────────────────────────────────────────────────
-        let activeCount  = sessions.filter { $0.isRecentlyActive }.count
-        let processCount = processMonitor.count
-        let waitingCount = max(0, processCount - activeCount)
+        let processCount    = processMonitor.count
+        let activeCount     = sessions.filter { $0.isRecentlyActive }.count
+        let attentionCount  = processCount > 0 ? sessions.filter { $0.needsAttention }.count : 0
+        let idleCount       = max(0, processCount - activeCount - attentionCount)
 
         menu.addItem(header("Claude CLI Observer"))
         menu.addItem(NSMenuItem.separator())
@@ -143,9 +144,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             procLabel = "No active process"
         } else {
             var parts: [String] = []
-            if activeCount > 0  { parts.append("⚡ \(activeCount) working") }
-            if waitingCount > 0 { parts.append("⏸ \(waitingCount) waiting") }
-            procLabel = parts.joined(separator: "  ·  ")
+            if attentionCount > 0 { parts.append("🟠 \(attentionCount) waiting") }
+            if activeCount > 0    { parts.append("⚡ \(activeCount) working") }
+            if idleCount > 0      { parts.append("⏸ \(idleCount) idle") }
+            // Fallback : processus détectés mais aucune session récente dans le JSONL
+            procLabel = parts.isEmpty ? "⏸ \(processCount) open" : parts.joined(separator: "  ·  ")
         }
         let procItem = NSMenuItem(title: procLabel, action: nil, keyEquivalent: "")
         procItem.isEnabled = false
