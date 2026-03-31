@@ -199,11 +199,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(debugToggle)
 
         if debugMode {
+            let attentionNames = sessions.filter { $0.needsAttention }.map { $0.projectName }.joined(separator: ", ")
             let lines = [
                 "processes (ps): \(processCount)",
                 "sessions total: \(sessions.count)",
                 "active (⚡): \(activeCount)",
-                "attention (🟠): \(attentionCount)",
+                "attention (🟠): \(attentionCount)" + (attentionCount > 0 ? " → \(attentionNames)" : ""),
             ] + sessions.map { s in
                 "  [\(s.sessionId.prefix(8))] \(s.projectName) | active=\(s.isRecentlyActive) | attn=\(s.needsAttention) | waiting=\(s.waitingState) | lastAct=\(Int(-s.lastActivity.timeIntervalSinceNow))s ago"
             }

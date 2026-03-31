@@ -73,10 +73,11 @@ struct SessionInfo {
     /// True when FSEvents detected a write in the last 30 seconds.
     var isRecentlyActive: Bool { Date() < liveActiveUntil }
 
-    /// True when the session is waiting for user input and was active in the last hour.
-    /// Uses lastActivity (set by both initial load and FSEvents) — not a FSEvents-only gate.
+    /// True when the session is waiting for user input, was active in the last hour,
+    /// and is NOT currently processing (active sessions take priority over waiting state).
     var needsAttention: Bool {
         guard waitingState != .none else { return false }
+        guard !isRecentlyActive else { return false }
         return Date().timeIntervalSince(lastActivity) < 3_600
     }
 
