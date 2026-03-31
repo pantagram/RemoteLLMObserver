@@ -7,7 +7,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let sessionWatcher = SessionWatcher()
     private var sessions: [SessionInfo] = []
     private var refreshTimer: Timer?
-    private var isImageColored = false
     private var debugMode = false
 
     // MARK: - Launch
@@ -45,43 +44,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let sessionCount   = max(processCount, waitingCount + activeCount)
 
         // Priority: waiting > working > open
-        let title: String
+        // Use attributedTitle to colour only the label without touching button.image
+        // (replacing button.image breaks title rendering — NSStatusBarButton quirk).
+        let label: String
+        let labelColor: NSColor
         if waitingCount > 0 {
-            setIconColor(orange: true)
-            title = " ?\(waitingCount)"
+            label = " ?\(waitingCount)"
+            labelColor = .systemOrange
         } else if activeCount > 0 {
-            setIconColor(orange: false)
-            title = " ⚡\(activeCount)"
+            label = " ⚡\(activeCount)"
+            labelColor = .labelColor
         } else if sessionCount > 0 {
-            setIconColor(orange: false)
-            title = " \(sessionCount)"
+            label = " \(sessionCount)"
+            labelColor = .labelColor
         } else {
-            setIconColor(orange: false)
-            title = ""
+            label = ""
+            labelColor = .labelColor
         }
 
-        // Always sync title and imagePosition together — AppKit resets
-        // imagePosition to .imageOnly when title is set to "" and doesn't
-        // restore it automatically when a title is set again later.
-        button.title = title
-        button.imagePosition = title.isEmpty ? .imageOnly : .imageLeft
-    }
-
-    /// Only rebuilds the NSImage when the colour state actually changes.
-    private func setIconColor(orange: Bool) {
-        guard orange != isImageColored else { return }
-        isImageColored = orange
-        guard let button = statusItem.button else { return }
-
-        if orange {
-            let cfg = NSImage.SymbolConfiguration(paletteColors: [.systemOrange])
-            button.image = NSImage(systemSymbolName: "terminal",
-                                   accessibilityDescription: "Claude")?
-                .withSymbolConfiguration(cfg)
+        if label.isEmpty {
+            button.attributedTitle = NSAttributedString(string: "")
+            button.imagePosition = .imageOnly
         } else {
-            let img = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Claude")
-            img?.isTemplate = true
-            button.image = img
+            let attrs: [NSAttributedString.Key: Any] = [.foregroundColor: labelColor]
+            button.attributedTitle = NSAttributedString(string: label, attributes: attrs)
+            button.imagePosition = .imageLeft
         }
     }
 

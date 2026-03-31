@@ -33,9 +33,11 @@ if newCount != self.count {
     }
 
     private static func countClaudeProcesses() -> Int {
+        // pgrep -x matches the exact process name "claude" — more reliable than
+        // parsing ps output which truncates comm to 16 chars in some environments.
         let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/ps")
-        proc.arguments = ["-eo", "comm"]
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        proc.arguments = ["-x", "claude"]
 
         let pipe = Pipe()
         proc.standardOutput = pipe
@@ -49,12 +51,6 @@ if newCount != self.count {
         }
 
         let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        return output
-            .components(separatedBy: "\n")
-            .filter { line in
-                let t = line.trimmingCharacters(in: .whitespaces)
-                return t == "claude" || t.hasSuffix("/claude")
-            }
-            .count
+        return output.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
     }
 }
