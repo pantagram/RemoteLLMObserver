@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var allSessions:    [SessionInfo] { claudeSessions + codexSessions }
 
     private var refreshTimer: Timer?
-    private var debugMode = false
+    private var settingsController: SettingsWindowController?
 
     // MARK: - Launch
 
@@ -28,9 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let button = statusItem.button else { return }
 
         // Image set once — recreating it on every updateButton call breaks title rendering.
-        let img = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Claude")
-        img?.isTemplate = true
-        button.image = img
+        applyIcon()
         button.imagePosition = .imageLeft
 
         let menu = NSMenu()
@@ -38,6 +36,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
 
         updateButton()
+    }
+
+    /// Updates the status bar icon from the current Settings value.
+    private func applyIcon() {
+        guard let button = statusItem.button else { return }
+        let symbol = Settings.shared.iconSymbol
+        let img = NSImage(systemSymbolName: symbol, accessibilityDescription: "Observer")
+               ?? NSImage(systemSymbolName: Settings.defaultIconSymbol, accessibilityDescription: "Observer")
+        img?.isTemplate = true
+        button.image = img
     }
 
     private func updateButton() {
@@ -102,6 +110,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    // MARK: - Settings
+
+    @objc private func openPreferences() {
+        if settingsController == nil {
+            let ctrl = SettingsWindowController()
+            ctrl.onSave = { [weak self] pathsChanged in
+                self?.applySettings(pathsChanged: pathsChanged)
+            }
+            settingsController = ctrl
+        }
+        settingsController?.showWindow()
+    }
+
+    private func applySettings(pathsChanged: Bool) {
+        // Always update the icon — cheap and covers icon-only changes.
+        applyIcon()
+
+        if pathsChanged {
+            // Clear stale data immediately so the badge resets, then restart.
+            claudeSessions = []
+            codexSessions  = []
+            updateButton()
+            sessionWatcher.restart()
+            codexWatcher.restart()
+        }
+
+        // Rebuild the menu so debug-mode toggle takes effect right away.
+        rebuildMenu()
+    }
+
     // MARK: - NSMenuDelegate
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -152,7 +190,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         procItem.isEnabled = false
         menu.addItem(procItem)
 
-        // Provider breakdown (only if both have running processes)
         if processMonitor.claudeCount > 0 || processMonitor.codexCount > 0 {
             let subLabel = "[C] \(processMonitor.claudeCount) claude  ·  [X] \(processMonitor.codexCount) codex"
             let subItem = NSMenuItem(title: "  \(subLabel)", action: nil, keyEquivalent: "")
@@ -195,7 +232,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 sessionItem.isEnabled = false
                 menu.addItem(sessionItem)
 
-                // Sub-agents (Claude only)
                 for (agentId, agentTokens) in session.agents.sorted(by: { $0.key < $1.key }) {
                     let shortId = String(agentId.prefix(8))
                     let agentItem = NSMenuItem(
@@ -209,13 +245,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
-        // ── Debug ─────────────────────────────────────────────────────────
-        menu.addItem(NSMenuItem.separator())
-        let debugTitle = debugMode ? "Hide Debug Info" : "Show Debug Info"
-        let debugToggle = NSMenuItem(title: debugTitle, action: #selector(toggleDebug), keyEquivalent: "d")
-        menu.addItem(debugToggle)
-
-        if debugMode {
+        // ── Debug info (only when enabled in Preferences) ─────────────────
+        if Settings.shared.debugMode {
+            menu.addItem(NSMenuItem.separator())
             let attentionNames = sessions.filter { $0.needsAttention }
                 .map { "\($0.provider.prefix)\($0.projectName)" }.joined(separator: ", ")
             let lines = [
@@ -235,12 +267,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // ── Footer ────────────────────────────────────────────────────────
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-    }
 
-    @objc private func toggleDebug() {
-        debugMode.toggle()
-        rebuildMenu()
+        let prefsItem = NSMenuItem(title: "Preferences…", action: #selector(openPreferences), keyEquivalent: ",")
+        prefsItem.keyEquivalentModifierMask = .command
+        menu.addItem(prefsItem)
+
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
 
     // MARK: - Formatting helpers

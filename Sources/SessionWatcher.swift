@@ -8,13 +8,12 @@ final class SessionWatcher {
     var onUpdate: (([SessionInfo]) -> Void)?
 
     private var sessions: [String: SessionInfo] = [:]   // sessionId -> SessionInfo
-    private let parser = TokenParser()
+    private var parser = TokenParser()
     private var eventStream: FSEventStreamRef?
-    private let projectsDir: URL
+    private var projectsDir: URL
 
     init() {
-        projectsDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude/projects")
+        projectsDir = Settings.shared.claudeProjectsURL
     }
 
     // MARK: - Lifecycle
@@ -30,6 +29,15 @@ final class SessionWatcher {
         FSEventStreamInvalidate(stream)
         FSEventStreamRelease(stream)
         eventStream = nil
+    }
+
+    /// Stops all activity, resets state, reads fresh paths from Settings, and restarts.
+    func restart() {
+        stop()
+        sessions = [:]
+        parser = TokenParser()
+        projectsDir = Settings.shared.claudeProjectsURL
+        start()
     }
 
     func currentSessions() -> [SessionInfo] {

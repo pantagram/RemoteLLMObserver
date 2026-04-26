@@ -15,10 +15,12 @@ mkdir -p "${APP_BUNDLE}/Contents/Resources"
 # Compile all Swift sources in one shot
 swiftc \
     Sources/Models.swift \
+    Sources/Settings.swift \
     Sources/ProcessMonitor.swift \
     Sources/TokenParser.swift \
     Sources/SessionWatcher.swift \
     Sources/CodexSessionWatcher.swift \
+    Sources/SettingsWindowController.swift \
     Sources/AppDelegate.swift \
     Sources/main.swift \
     -framework AppKit \

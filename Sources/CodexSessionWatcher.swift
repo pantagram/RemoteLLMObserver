@@ -13,14 +13,13 @@ final class CodexSessionWatcher {
     private var lastTokensUsed: [String: Int] = [:]            // threadId -> tokens_used
 
     private var eventStream: FSEventStreamRef?
-    private let sessionsDir: URL
-    private let dbDir: String
-    private let dbPath: String
+    private var sessionsDir: URL
+    private var dbDir: String
+    private var dbPath: String
 
     init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        sessionsDir = home.appendingPathComponent(".codex/sessions")
-        dbPath = home.appendingPathComponent(".codex/state_5.sqlite").path
+        sessionsDir = Settings.shared.codexSessionsURL
+        dbPath = Settings.shared.codexDBURL.path
         dbDir  = (dbPath as NSString).deletingLastPathComponent
     }
 
@@ -37,6 +36,18 @@ final class CodexSessionWatcher {
         FSEventStreamInvalidate(stream)
         FSEventStreamRelease(stream)
         eventStream = nil
+    }
+
+    /// Stops all activity, resets state, reads fresh paths from Settings, and restarts.
+    func restart() {
+        stop()
+        sessions = [:]
+        rolloutToThread = [:]
+        lastTokensUsed = [:]
+        sessionsDir = Settings.shared.codexSessionsURL
+        dbPath = Settings.shared.codexDBURL.path
+        dbDir  = (dbPath as NSString).deletingLastPathComponent
+        start()
     }
 
     // MARK: - Initial load
