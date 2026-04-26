@@ -18,11 +18,13 @@ swiftc \
     Sources/ProcessMonitor.swift \
     Sources/TokenParser.swift \
     Sources/SessionWatcher.swift \
+    Sources/CodexSessionWatcher.swift \
     Sources/AppDelegate.swift \
     Sources/main.swift \
     -framework AppKit \
     -framework Foundation \
     -framework CoreServices \
+    -lsqlite3 \
     -O \
     -o "${BINARY}"
 

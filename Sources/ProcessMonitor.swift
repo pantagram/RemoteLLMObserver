@@ -1,10 +1,16 @@
 import Foundation
 
-/// Counts running `claude` CLI processes using `ps`.
-/// Polls every 5 seconds; fires `onCountChange` only when the count changes.
+/// Counts running `claude` and `codex` CLI processes using pgrep.
+/// Polls every 5 seconds; fires `onCountChange` only when any count changes.
 final class ProcessMonitor {
     var onCountChange: ((Int) -> Void)?
-    private(set) var count: Int = 0
+
+    private(set) var claudeCount: Int = 0
+    private(set) var codexCount: Int = 0
+
+    /// Total processes across all providers.
+    var count: Int { claudeCount + codexCount }
+
     private var timer: Timer?
 
     func start() {
@@ -21,23 +27,23 @@ final class ProcessMonitor {
 
     private func scan() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let newCount = Self.countClaudeProcesses()
+            let newClaude = Self.countProcesses(named: "claude")
+            let newCodex  = Self.countProcesses(named: "codex")
             DispatchQueue.main.async {
                 guard let self else { return }
-if newCount != self.count {
-                    self.count = newCount
-                    self.onCountChange?(newCount)
+                if newClaude != self.claudeCount || newCodex != self.codexCount {
+                    self.claudeCount = newClaude
+                    self.codexCount  = newCodex
+                    self.onCountChange?(self.count)
                 }
             }
         }
     }
 
-    private static func countClaudeProcesses() -> Int {
-        // pgrep -x matches the exact process name "claude" — more reliable than
-        // parsing ps output which truncates comm to 16 chars in some environments.
+    private static func countProcesses(named name: String) -> Int {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        proc.arguments = ["-x", "claude"]
+        proc.arguments = ["-x", name]
 
         let pipe = Pipe()
         proc.standardOutput = pipe

@@ -3,9 +3,14 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var statusItem: NSStatusItem!
-    private let processMonitor = ProcessMonitor()
-    private let sessionWatcher = SessionWatcher()
-    private var sessions: [SessionInfo] = []
+    private let processMonitor  = ProcessMonitor()
+    private let sessionWatcher  = SessionWatcher()
+    private let codexWatcher    = CodexSessionWatcher()
+
+    private var claudeSessions: [SessionInfo] = []
+    private var codexSessions:  [SessionInfo] = []
+    private var allSessions:    [SessionInfo] { claudeSessions + codexSessions }
+
     private var refreshTimer: Timer?
     private var debugMode = false
 
@@ -22,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem.button else { return }
 
-        // Image définie une seule fois — la recréer à chaque update perturbe le rendu du title
+        // Image set once — recreating it on every updateButton call breaks title rendering.
         let img = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Claude")
         img?.isTemplate = true
         button.image = img
@@ -38,14 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateButton() {
         guard let button = statusItem.button else { return }
 
-        let processCount   = processMonitor.count
-        let waitingCount   = sessions.filter { $0.needsAttention }.count
-        let activeCount    = sessions.filter { $0.isRecentlyActive }.count
-        let sessionCount   = max(processCount, waitingCount + activeCount)
+        let processCount  = processMonitor.count
+        let waitingCount  = allSessions.filter { $0.needsAttention }.count
+        let activeCount   = allSessions.filter { $0.isRecentlyActive }.count
+        let sessionCount  = max(processCount, waitingCount + activeCount)
 
-        // Priority: waiting > working > open
-        // Use attributedTitle to colour only the label without touching button.image
-        // (replacing button.image breaks title rendering — NSStatusBarButton quirk).
         let label: String
         let labelColor: NSColor
         if waitingCount > 0 {
@@ -80,20 +82,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.rebuildMenu()
         }
         sessionWatcher.onUpdate = { [weak self] updated in
-            self?.sessions = updated
+            self?.claudeSessions = updated
             self?.updateButton()
             self?.rebuildMenu()
         }
+        codexWatcher.onUpdate = { [weak self] updated in
+            self?.codexSessions = updated
+            self?.updateButton()
+            self?.rebuildMenu()
+        }
+
         processMonitor.start()
         sessionWatcher.start()
+        codexWatcher.start()
 
-        // Rafraîchit le badge toutes les 5s pour expirer les ⚡ en temps voulu.
+        // Refresh badge every 5 s so ⚡ expires naturally.
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             self?.updateButton()
         }
     }
 
-    // MARK: - NSMenuDelegate — rebuild just before display
+    // MARK: - NSMenuDelegate
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         rebuildMenu(into: menu)
@@ -109,24 +118,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func rebuildMenu(into menu: NSMenu) {
         menu.removeAllItems()
 
+        let sessions = allSessions
         let grandTotal = sessions.map { $0.totalUsage }.reduce(TokenCount(), +)
         let recentSessions = sessions
             .filter { $0.lastActivity > Date().addingTimeInterval(-86_400) }
             .sorted { a, b in
-                // 1. waiting for attention  2. actively working  3. rest by date
-                if a.needsAttention != b.needsAttention { return a.needsAttention }
+                if a.needsAttention   != b.needsAttention   { return a.needsAttention }
                 if a.isRecentlyActive != b.isRecentlyActive { return a.isRecentlyActive }
                 return a.lastActivity > b.lastActivity
             }
 
-        // ── Global total ──────────────────────────────────────────────────
-        let processCount    = processMonitor.count
-        let activeCount     = sessions.filter { $0.isRecentlyActive }.count
-        let attentionCount  = sessions.filter { $0.needsAttention }.count
-        let knownCount      = activeCount + attentionCount
-        let idleCount       = max(0, processCount - knownCount)
+        // ── Global status ─────────────────────────────────────────────────
+        let processCount   = processMonitor.count
+        let activeCount    = sessions.filter { $0.isRecentlyActive }.count
+        let attentionCount = sessions.filter { $0.needsAttention }.count
+        let knownCount     = activeCount + attentionCount
+        let idleCount      = max(0, processCount - knownCount)
 
-        menu.addItem(header("Claude CLI Observer"))
+        menu.addItem(header("Claude & Codex Observer"))
         menu.addItem(NSMenuItem.separator())
 
         let procLabel: String
@@ -142,6 +151,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let procItem = NSMenuItem(title: procLabel, action: nil, keyEquivalent: "")
         procItem.isEnabled = false
         menu.addItem(procItem)
+
+        // Provider breakdown (only if both have running processes)
+        if processMonitor.claudeCount > 0 || processMonitor.codexCount > 0 {
+            let subLabel = "[C] \(processMonitor.claudeCount) claude  ·  [X] \(processMonitor.codexCount) codex"
+            let subItem = NSMenuItem(title: "  \(subLabel)", action: nil, keyEquivalent: "")
+            subItem.isEnabled = false
+            menu.addItem(subItem)
+        }
 
         menu.addItem(NSMenuItem.separator())
 
@@ -165,20 +182,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if session.isRecentlyActive {
                     status = "⚡"
                 } else if session.needsAttention && processMonitor.count > 0 {
-                    status = session.waitingState.icon   // 💬 or 🔐
+                    status = session.waitingState.icon
                 } else {
                     status = "⏸"
                 }
-                let sessionTotal = session.totalUsage
 
+                let sessionTotal = session.totalUsage
                 let sessionItem = NSMenuItem(
-                    title: "\(status) \(session.projectName)  —  \(format(sessionTotal))",
+                    title: "\(session.provider.prefix) \(status) \(session.projectName)  —  \(format(sessionTotal))",
                     action: nil, keyEquivalent: ""
                 )
                 sessionItem.isEnabled = false
                 menu.addItem(sessionItem)
 
-                // Agents
+                // Sub-agents (Claude only)
                 for (agentId, agentTokens) in session.agents.sorted(by: { $0.key < $1.key }) {
                     let shortId = String(agentId.prefix(8))
                     let agentItem = NSMenuItem(
@@ -199,14 +216,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(debugToggle)
 
         if debugMode {
-            let attentionNames = sessions.filter { $0.needsAttention }.map { $0.projectName }.joined(separator: ", ")
+            let attentionNames = sessions.filter { $0.needsAttention }
+                .map { "\($0.provider.prefix)\($0.projectName)" }.joined(separator: ", ")
             let lines = [
-                "processes (ps): \(processCount)",
-                "sessions total: \(sessions.count)",
+                "claude (pgrep): \(processMonitor.claudeCount)  codex: \(processMonitor.codexCount)",
+                "sessions total: \(sessions.count)  (claude \(claudeSessions.count) / codex \(codexSessions.count))",
                 "active (⚡): \(activeCount)",
                 "attention (🟠): \(attentionCount)" + (attentionCount > 0 ? " → \(attentionNames)" : ""),
             ] + sessions.map { s in
-                "  [\(s.sessionId.prefix(8))] \(s.projectName) | active=\(s.isRecentlyActive) | attn=\(s.needsAttention) | waiting=\(s.waitingState) | lastAct=\(Int(-s.lastActivity.timeIntervalSinceNow))s ago"
+                "  [\(s.sessionId.prefix(8))] \(s.provider.prefix)\(s.projectName) | active=\(s.isRecentlyActive) | attn=\(s.needsAttention) | waiting=\(s.waitingState) | lastAct=\(Int(-s.lastActivity.timeIntervalSinceNow))s ago"
             }
             for line in lines {
                 let item = NSMenuItem(title: line, action: nil, keyEquivalent: "")
@@ -237,17 +255,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
-    /// Formats a TokenCount as a compact string, e.g. "142.3K tokens"
-    private func format(_ count: TokenCount) -> String {
-        formatInt(count.total)
-    }
-
+    private func format(_ count: TokenCount) -> String { formatInt(count.total) }
     private func format(_ n: Int) -> String { formatInt(n) }
 
     private func formatInt(_ n: Int) -> String {
         switch n {
-        case 0:           return "0 tok"
-        case ..<1_000:    return "\(n) tok"
+        case 0:            return "0 tok"
+        case ..<1_000:     return "\(n) tok"
         case ..<1_000_000: return String(format: "%.1fK tok", Double(n) / 1_000)
         default:           return String(format: "%.2fM tok", Double(n) / 1_000_000)
         }

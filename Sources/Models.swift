@@ -1,5 +1,19 @@
 import Foundation
 
+// MARK: - Provider
+
+enum AgentProvider {
+    case claude
+    case codex
+
+    var prefix: String {
+        switch self {
+        case .claude: return "[C]"
+        case .codex:  return "[X]"
+        }
+    }
+}
+
 // MARK: - Status
 
 enum ClaudeStatus: Equatable {
@@ -60,6 +74,7 @@ enum WaitingState: Equatable {
 struct SessionInfo {
     let sessionId: String
     let projectName: String
+    let provider: AgentProvider
     var usage: TokenCount
     var agents: [String: TokenCount]   // agentId -> tokens
     var lastActivity: Date

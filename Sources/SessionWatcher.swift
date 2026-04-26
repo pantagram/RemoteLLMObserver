@@ -203,6 +203,7 @@ final class SessionWatcher {
         if sessions[sessionId] == nil {
             sessions[sessionId] = SessionInfo(
                 sessionId: sessionId, projectName: projectName,
+                provider: .claude,
                 usage: TokenCount(), agents: [:], lastActivity: date
             )
         }
