@@ -34,21 +34,41 @@ A lightweight macOS menu bar app that monitors active [Claude CLI](https://githu
 ## Requirements
 
 - macOS 12.0+
-- Xcode Command Line Tools (`xcode-select --install`)
+- Xcode Command Line Tools
+
+```bash
+xcode-select --install
+```
 
 ## Build & install
 
-```bash
-# Build
-bash build.sh
+### 1. Clone the repo
 
-# Run directly
+```bash
+git clone https://github.com/pantagram/RemoteLLMObserver.git
+cd RemoteLLMObserver
+```
+
+### 2. Build
+
+```bash
+bash build.sh
+```
+
+This compiles all Swift sources with `swiftc` and assembles the `.app` bundle under `.build/RemoteLLMObserver.app`. No Xcode project or package manager required.
+
+### 3. Run or install
+
+```bash
+# Run directly from the build directory
 open .build/RemoteLLMObserver.app
 
-# Install to Applications
+# Or install to ~/Applications
 cp -r .build/RemoteLLMObserver.app ~/Applications/
 open ~/Applications/RemoteLLMObserver.app
 ```
+
+The app runs as a menu bar agent (no Dock icon). To quit, click the icon in the menu bar and select **Quit**.
 
 ## Shell utilities
 
