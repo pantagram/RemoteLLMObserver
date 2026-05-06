@@ -1,31 +1,33 @@
 # RemoteLLMObserver
 
-A lightweight macOS menu bar app that monitors active [Claude CLI](https://github.com/anthropics/claude-code) sessions in real time, tracking process state and token consumption.
+A lightweight macOS menu bar app that monitors active [Claude CLI](https://github.com/anthropics/claude-code) and [Codex CLI](https://github.com/openai/codex) sessions in real time, tracking process state and token consumption.
 
 ## Features
 
-- **Live session count** — shows the number of open Claude CLI sessions directly in the menu bar
+- **Live session count** — shows the number of open Claude and Codex sessions directly in the menu bar
 - **Active work indicator** — a ⚡ badge with a count appears when one or more sessions are actively processing
 - **Token usage** — click the icon to see total token consumption (input / output / cache) broken down per session and per sub-agent
 - **24-hour history** — sessions from the last 24 hours are listed even after they finish
-- **Shell utilities** — companion scripts for CLI access and Bartender integration
+- **Shell utilities** — companion scripts for CLI access and Bartender integration (Claude only)
 
 ## How it works
 
-| Mechanism | Purpose |
-|-----------|---------|
-| `ps -eo comm` (every 5s) | Counts running `claude` processes |
-| FSEvents on `~/.claude/projects/` | Detects file writes in real time (zero CPU when idle) |
-| Incremental JSONL parsing | Reads only new bytes on each FSEvents notification |
-| 5s refresh timer | Expires the ⚡ badge when activity stops |
+| Mechanism | Provider | Purpose |
+|-----------|----------|---------|
+| `pgrep -x claude/codex` (every 5s) | Both | Counts running processes |
+| FSEvents on `~/.claude/projects/` | Claude | Detects file writes in real time (zero CPU when idle) |
+| Incremental JSONL parsing | Claude | Reads only new bytes on each FSEvents notification |
+| FSEvents on `~/.codex/sessions/` | Codex | Detects JSONL updates from active sessions |
+| SQLite read on `~/.codex/state_5.sqlite` | Codex | Loads thread metadata and token totals |
+| 5s refresh timer | Both | Expires the ⚡ badge when activity stops |
 
-**CPU impact is negligible** — FSEvents is fully event-driven; the only polling is a lightweight `ps` call every 5 seconds.
+**CPU impact is negligible** — FSEvents is fully event-driven; the only polling is a lightweight `pgrep` call every 5 seconds.
 
 ## Menu bar states
 
 | Display | Meaning |
 |---------|---------|
-| Icon only | No Claude processes running |
+| Icon only | No Claude or Codex processes running |
 | Icon + number | N sessions open, none currently processing |
 | Icon + ⚡N | N sessions actively writing output |
 
@@ -49,6 +51,8 @@ open ~/Applications/RemoteLLMObserver.app
 ```
 
 ## Shell utilities
+
+These scripts cover Claude CLI sessions only.
 
 ### `status.sh`
 Prints a full status report in the terminal:
@@ -79,25 +83,30 @@ bash has-active-sessions.sh && echo "active" || echo "idle"
 
 ```
 Sources/
-  main.swift           — NSApplication entry point
-  AppDelegate.swift    — NSStatusItem, menu construction, badge logic
-  Models.swift         — SessionInfo, TokenCount data structures
-  ProcessMonitor.swift — Claude process detection via ps
-  SessionWatcher.swift — FSEvents watcher + incremental JSONL parsing
-  TokenParser.swift    — JSONL token extraction
+  main.swift                — NSApplication entry point
+  AppDelegate.swift         — NSStatusItem, menu construction, badge logic
+  Models.swift              — SessionInfo, TokenCount data structures
+  ProcessMonitor.swift      — Claude and Codex process detection via pgrep
+  SessionWatcher.swift      — FSEvents watcher + incremental JSONL parsing (Claude)
+  CodexSessionWatcher.swift — SQLite + FSEvents watcher (Codex)
+  TokenParser.swift         — JSONL token extraction
+  Settings.swift            — User preferences (paths, icon, debug mode)
+  SettingsWindowController.swift — Preferences panel
 Resources/
   Info.plist           — LSUIElement (no Dock icon), bundle metadata
 build.sh               — Compiles and assembles the .app bundle
-status.sh              — CLI status report
-has-active-sessions.sh — Bartender trigger script
+status.sh              — CLI status report (Claude)
+has-active-sessions.sh — Bartender trigger script (Claude)
 ```
 
 ## Token fields tracked
 
-Each JSONL `assistant` message contributes:
+**Claude** — each JSONL `assistant` message contributes:
 - `input_tokens`
 - `output_tokens`
 - `cache_creation_input_tokens`
 - `cache_read_input_tokens`
 
 Sub-agent sessions (under `{sessionId}/subagents/`) are parsed separately and listed under their parent session.
+
+**Codex** — token totals come from `token_count` events in session JSONL files, falling back to the `tokens_used` field in the SQLite database.
