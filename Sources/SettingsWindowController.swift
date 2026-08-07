@@ -14,6 +14,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var codexSessionsField: NSTextField!
     private var codexDBField:       NSTextField!
     private var debugCheckbox:      NSButton!
+    private var hideIdleCheckbox:   NSButton!
 
     // Original values (to detect path changes)
     private var originalClaudePath:    String = ""
@@ -24,7 +25,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     convenience init() {
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 430),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 455),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -64,6 +65,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         // Debug
         debugCheckbox.state = s.debugMode ? .on : .off
+
+        // Hide idle processes
+        hideIdleCheckbox.state = s.hideIdleProcesses ? .on : .off
 
         // Snapshot originals
         originalClaudePath    = s.claudeProjectsPath
@@ -131,6 +135,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         debugCheckbox = NSButton(checkboxWithTitle: "Enable debug info in menu", target: nil, action: nil)
         stack.addArrangedSubview(debugCheckbox)
+
+        hideIdleCheckbox = NSButton(checkboxWithTitle: "Hide idle processes", target: nil, action: nil)
+        stack.addArrangedSubview(hideIdleCheckbox)
 
         // Elastic spacer
         let spacer = NSView()
@@ -323,6 +330,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         codexSessionsField.stringValue = Settings.defaultCodexSessionsPath
         codexDBField.stringValue       = Settings.defaultCodexDBPath
         debugCheckbox.state = .off
+        hideIdleCheckbox.state = .off
     }
 
     @objc private func cancel() {
@@ -340,6 +348,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         s.codexSessionsPath  = codexSessionsField.stringValue
         s.codexDBPath        = codexDBField.stringValue
         s.debugMode          = debugCheckbox.state == .on
+        s.hideIdleProcesses  = hideIdleCheckbox.state == .on
 
         window?.close()
         onSave?(pathsChanged)
