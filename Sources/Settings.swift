@@ -49,6 +49,7 @@ final class Settings {
         case codexSessionsPath   = "codexSessionsPath"
         case codexDBPath         = "codexDBPath"
         case debugMode           = "debugMode"
+        case hideIdleProcesses   = "hideIdleProcesses"
     }
 
     // MARK: - Stored properties
@@ -78,6 +79,13 @@ final class Settings {
         set { UserDefaults.standard.set(newValue, forKey: Key.debugMode.rawValue) }
     }
 
+    /// When true, idle/resting processes and sessions are hidden from the menu bar
+    /// badge and the dropdown menu — only "waiting" and "working" states are shown.
+    var hideIdleProcesses: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.hideIdleProcesses.rawValue) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.hideIdleProcesses.rawValue) }
+    }
+
     // MARK: - Resolved URLs (tilde expanded)
 
     var claudeProjectsURL: URL { resolved(claudeProjectsPath) }
@@ -96,5 +104,6 @@ final class Settings {
         codexSessionsPath   = Self.defaultCodexSessionsPath
         codexDBPath         = Self.defaultCodexDBPath
         debugMode           = false
+        hideIdleProcesses   = false
     }
 }

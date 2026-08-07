@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let waitingCount  = allSessions.filter { $0.needsAttention }.count
         let activeCount   = allSessions.filter { $0.isRecentlyActive }.count
         let sessionCount  = max(processCount, waitingCount + activeCount)
+        let hideIdle      = Settings.shared.hideIdleProcesses
 
         let label: String
         let labelColor: NSColor
@@ -64,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else if activeCount > 0 {
             label = " ⚡\(activeCount)"
             labelColor = .labelColor
-        } else if sessionCount > 0 {
+        } else if sessionCount > 0 && !hideIdle {
             label = " \(sessionCount)"
             labelColor = .labelColor
         } else {
@@ -176,6 +177,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(header("Claude & Codex Observer"))
         menu.addItem(NSMenuItem.separator())
 
+        let hideIdle = Settings.shared.hideIdleProcesses
+
         let procLabel: String
         if knownCount == 0 && processCount == 0 {
             procLabel = "No active process"
@@ -183,8 +186,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             var parts: [String] = []
             if attentionCount > 0 { parts.append("🟠 \(attentionCount) waiting") }
             if activeCount > 0    { parts.append("⚡ \(activeCount) working") }
-            if idleCount > 0      { parts.append("⏸ \(idleCount) idle") }
-            procLabel = parts.isEmpty ? "⏸ \(processCount) open" : parts.joined(separator: "  ·  ")
+            if idleCount > 0 && !hideIdle { parts.append("⏸ \(idleCount) idle") }
+            if parts.isEmpty {
+                procLabel = hideIdle ? "No active process" : "⏸ \(processCount) open"
+            } else {
+                procLabel = parts.joined(separator: "  ·  ")
+            }
         }
         let procItem = NSMenuItem(title: procLabel, action: nil, keyEquivalent: "")
         procItem.isEnabled = false
@@ -223,6 +230,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 } else {
                     status = "⏸"
                 }
+
+                if hideIdle && status == "⏸" { continue }
 
                 let sessionTotal = session.totalUsage
                 let sessionItem = NSMenuItem(
