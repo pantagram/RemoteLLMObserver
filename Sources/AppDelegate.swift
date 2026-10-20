@@ -204,6 +204,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(subItem)
         }
 
+        let recentCutoff = Date().addingTimeInterval(-600)
+        let recentCount  = sessions.filter { $0.lastActivity > recentCutoff && $0.totalUsage.total > 0 }.count
+        let recentItem = NSMenuItem(title: "🕙 \(recentCount) active (last 10 min)", action: nil, keyEquivalent: "")
+        recentItem.isEnabled = false
+        menu.addItem(recentItem)
+
         menu.addItem(NSMenuItem.separator())
 
         let totalItem = NSMenuItem(title: "Total: \(format(grandTotal))", action: nil, keyEquivalent: "")

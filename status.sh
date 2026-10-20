@@ -15,6 +15,7 @@ run_status() {
     local cutoff_24h=$(( now - 86400 ))
     local cutoff_active=$(( now - 30 ))     # cohérent avec l'app (30s)
     local cutoff_waiting=$(( now - 300 ))   # affiche 💬/🔐 si modifié dans les 5 min
+    local cutoff_recent=$(( now - 600 ))    # sessions ayant consommé des tokens dans les 10 min
 
     # ── Processus ─────────────────────────────────────────────────────────
     local proc_count
@@ -28,7 +29,7 @@ run_status() {
     # ── Sessions (dernières 24h) ───────────────────────────────────────────
     local total_in=0 total_out=0 total_cc=0 total_cr=0
     local session_lines=()
-    local active_count=0 waiting_r=0 waiting_a=0
+    local active_count=0 waiting_r=0 waiting_a=0 recent_count=0
 
     for project_dir in "$CLAUDE_DIR"/*/; do
         [[ -d "$project_dir" ]] || continue
@@ -53,6 +54,8 @@ run_status() {
             total_out=$(( total_out + s_out ))
             total_cc=$(( total_cc + s_cc ))
             total_cr=$(( total_cr + s_cr ))
+
+            (( mod_epoch >= cutoff_recent )) && (( recent_count++ ))
 
             # Icône selon priorité : attente > travail > inactif
             # 💬/🔐 uniquement si un process tourne (proc_count > 0)
@@ -119,6 +122,7 @@ run_status() {
         fi
         echo "$proc_label"
     fi
+    echo " Last 10 min: $recent_count active"
 
     # ── Totaux ────────────────────────────────────────────────────────────
     local grand_total=$(( total_in + total_out + total_cc + total_cr ))
