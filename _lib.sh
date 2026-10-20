@@ -17,6 +17,17 @@ count_processes() {
     ps -eo comm | grep -cE "^claude$|/claude$" || true
 }
 
+# Sessions ayant consommé des tokens dans les 10 dernières minutes (« Last 10 min » de status.sh).
+# Seuls les fichiers récemment modifiés sont examinés, et un simple grep sur les champs
+# d'usage suffit : inutile de parser des JSONL de plusieurs centaines de Mo.
+count_recent_sessions() {
+    local count=0 jsonl
+    while IFS= read -r jsonl; do
+        grep -qE '"(input|output)_tokens"' "$jsonl" && (( count++ ))
+    done < <(find "$CLAUDE_DIR" -mindepth 2 -maxdepth 2 -name '*.jsonl' -mmin -10 2>/dev/null)
+    echo "$count"
+}
+
 # ── Parsing JSONL ──────────────────────────────────────────────────────────
 # Usage : read -r in out cc cr state < <(parse_jsonl "/path/to/file.jsonl")
 # Retourne : <input> <output> <cache_creation> <cache_read> <wait_state>

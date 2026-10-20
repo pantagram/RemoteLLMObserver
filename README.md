@@ -94,7 +94,7 @@ bash status.sh
 ```
 
 ### `has-active-sessions.sh`
-Returns `true` / `exit 0` if at least one Claude process is running — designed for [Bartender](https://www.macbartender.com/) trigger scripts:
+Returns `true` / `exit 0` if at least one Claude session consumed tokens in the last 10 minutes (same as « Last 10 min » in `status.sh`) — designed for [Bartender](https://www.macbartender.com/) trigger scripts:
 ```bash
 bash has-active-sessions.sh && echo "active" || echo "idle"
 ```
